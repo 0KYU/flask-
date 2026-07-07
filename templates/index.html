@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="flash-message">{{ messages[0] }}</div>
+        {% endif %}
+    {% endwith %}
+
+    {% if username %}
+        <h2 class="welcome-title">欢迎回来，{{ username }}！</h2>
+        {% if user %}
+            <ul class="user-info-list">
+                <li><span class="info-label">用户名：</span>{{ user.username }}</li>
+                <li><span class="info-label">邮箱：</span>{{ user.email }}</li>
+                <li><span class="info-label">手机：</span>{{ user.phone }}</li>
+                <li><span class="info-label">角色：</span>{{ user.role }}</li>
+                <li><span class="info-label">余额：</span>{{ user.balance }}</li>
+            </ul>
+            <div class="action-bar">
+                <form action="/logout" method="POST" style="display:inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-primary">退出登录</button>
+                </form>
+            </div>
+        {% endif %}
+    {% else %}
+        <h2 class="welcome-title">请先登录</h2>
+        <p class="info-text">您需要登录后才能访问系统。</p>
+        <div class="action-bar">
+            <a href="/login" class="btn btn-primary">前往登录</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
