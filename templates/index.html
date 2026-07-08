@@ -25,6 +25,45 @@
                 </form>
             </div>
         {% endif %}
+
+        <!-- 搜索功能 -->
+        <div class="search-section" style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #eee;">
+            <h3 style="margin-bottom: 12px;">用户搜索</h3>
+            <form method="GET" action="/" class="search-form" style="display: flex; gap: 8px;">
+                <input type="text" name="keyword" placeholder="输入关键词搜索用户..." value="{{ keyword or '' }}" style="flex: 1;">
+                <button type="submit" class="btn btn-primary">搜索</button>
+            </form>
+
+            {% if keyword is not none and keyword != '' %}
+                {% if search_results and search_results|length > 0 %}
+                    <div style="margin-top: 16px;">
+                        <p style="margin-bottom: 8px; color: #666;">搜索 "{{ keyword }}" 共找到 {{ search_results|length }} 条结果：</p>
+                        <table class="search-results-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>用户名</th>
+                                    <th>邮箱</th>
+                                    <th>手机</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in search_results %}
+                                <tr>
+                                    <td>{{ row.id }}</td>
+                                    <td>{{ row.username }}</td>
+                                    <td>{{ row.email }}</td>
+                                    <td>{{ row.phone }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p style="margin-top: 16px; color: #999;">无搜索结果</p>
+                {% endif %}
+            {% endif %}
+        </div>
     {% else %}
         <h2 class="welcome-title">请先登录</h2>
         <p class="info-text">您需要登录后才能访问系统。</p>

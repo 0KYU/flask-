@@ -1,5 +1,6 @@
 import logging
 import os
+import sqlite3
 import secrets
 import time
 from collections import defaultdict
@@ -65,6 +66,35 @@ USERS = {
         "balance": 100,
     },
 }
+
+# ---------------------------------------------------------------------------
+# Database initialization
+# ---------------------------------------------------------------------------
+def init_db():
+    """Create the SQLite database and seed default users."""
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect("data/users.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT,
+            email TEXT,
+            phone TEXT
+        )
+    """)
+    cursor.execute(
+        "INSERT OR IGNORE INTO users (username, password, email, phone) "
+        "VALUES ('admin', 'admin123', 'admin@example.com', '13800138000')"
+    )
+    cursor.execute(
+        "INSERT OR IGNORE INTO users (username, password, email, phone) "
+        "VALUES ('alice', 'alice2025', 'alice@example.com', '13900139001')"
+    )
+    conn.commit()
+    conn.close()
+    logging.info("Database initialized – data/users.db ready.")
 
 # ---------------------------------------------------------------------------
 # CSRF protection (H3)
@@ -165,7 +195,27 @@ def index():
             "phone": u["phone"],
             "balance": u["balance"],
         }
-    return render_template("index.html", username=username, user=user_info)
+
+    # Search functionality
+    keyword = request.args.get("keyword", "").strip()
+    search_results = None
+    if keyword:
+        conn = sqlite3.connect("data/users.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        sql = f"SELECT * FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
+        logging.info(f"[SEARCH SQL] {sql}")
+        cursor.execute(sql)
+        search_results = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+
+    return render_template(
+        "index.html",
+        username=username,
+        user=user_info,
+        keyword=keyword,
+        search_results=search_results,
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -223,6 +273,51 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    """Registration page — uses f-string SQL (deliberately insecure for teaching)."""
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+
+        conn = sqlite3.connect("data/users.db")
+        cursor = conn.cursor()
+        sql = f"INSERT INTO users (username, password, email, phone) VALUES ('{username}', '{password}', '{email}', '{phone}')"
+        logging.info(f"[REGISTER SQL] {sql}")
+        cursor.execute(sql)
+        conn.commit()
+        conn.close()
+
+        flash("注册成功，请登录")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
+
+@app.route("/search")
+def search():
+    """Search users — uses f-string SQL (deliberately insecure for teaching)."""
+    keyword = request.args.get("keyword", "").strip()
+    results = []
+    if keyword:
+        conn = sqlite3.connect("data/users.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        sql = f"SELECT * FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
+        logging.info(f"[SEARCH SQL] {sql}")
+        cursor.execute(sql)
+        results = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    return render_template(
+        "index.html",
+        username=session.get("username"),
+        keyword=keyword,
+        search_results=results,
+    )
+
+
 @app.route("/logout", methods=["POST"])
 def logout():
     """Logout — POST-only with CSRF protection (H5)."""
@@ -243,6 +338,7 @@ def logout():
 # Entry-point (C3: safe defaults)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    init_db()
     host = os.environ.get("FLASK_HOST", "127.0.0.1")
     port = int(os.environ.get("FLASK_PORT", "5000"))
     app.run(debug=app.config["DEBUG"], host=host, port=port)
