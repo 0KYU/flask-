@@ -3,11 +3,13 @@ import os
 import sqlite3
 import secrets
 import time
+import uuid
 from collections import defaultdict
 from datetime import timedelta
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -47,6 +49,9 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 
 # 文件上传大小限制
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
+
+# 允许上传的图片文件后缀
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 # ---------------------------------------------------------------------------
 # User store — passwords are hashed (C2)
@@ -354,15 +359,31 @@ def upload():
         if file.filename == "":
             return render_template("upload.html", error="未选择文件。")
 
+        # 修复1：路径穿越 — 清洗文件名，剥离 ../ 等路径成分
+        filename = secure_filename(file.filename)
+        if filename == "":
+            return render_template("upload.html", error="无效的文件名。")
+
+        # 修复2：文件类型限制 — 仅允许图片后缀
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            return render_template(
+                "upload.html",
+                error=f"不支持的文件类型（.{ext}），请上传图片文件（png, jpg, jpeg, gif, webp）。",
+            )
+
+        # 修复3：文件覆盖 — UUID 前缀确保文件名唯一
+        unique_filename = f"{uuid.uuid4().hex}_{filename}"
+
         upload_dir = os.path.join("static", "uploads")
         os.makedirs(upload_dir, exist_ok=True)
 
-        filepath = os.path.join(upload_dir, file.filename)
+        filepath = os.path.join(upload_dir, unique_filename)
         file.save(filepath)
 
-        file_url = url_for("static", filename=f"uploads/{file.filename}")
-        logging.info("Upload SUCCESS – user=%s file=%s", username, file.filename)
-        return render_template("upload.html", success=True, file_url=file_url, filename=file.filename)
+        file_url = url_for("static", filename=f"uploads/{unique_filename}")
+        logging.info("Upload SUCCESS – user=%s file=%s", username, unique_filename)
+        return render_template("upload.html", success=True, file_url=file_url, filename=unique_filename)
 
     return render_template("upload.html")
 
