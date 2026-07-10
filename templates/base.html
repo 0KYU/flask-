@@ -15,6 +15,9 @@
             {% if session.get('username') %}
                 <span class="nav-welcome">欢迎，{{ session.get('username') }}</span>
                 <a href="/profile?user_id={{ session.get('user_id', '') }}" class="nav-link">个人中心</a>
+                {% if session.get('username') == 'admin' %}
+                <a href="/admin" class="nav-link">管理面板</a>
+                {% endif %}
                 <a href="/upload" class="nav-link">上传头像</a>
                 <form action="/logout" method="POST" style="display:inline">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">

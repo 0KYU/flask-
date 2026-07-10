@@ -26,7 +26,7 @@
         <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #eee;">
             <h3 style="margin-bottom: 12px;">账户充值</h3>
             <form method="POST" action="/recharge" class="login-form">
-                <input type="hidden" name="user_id" value="{{ user.id }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="amount">充值金额</label>
                     <input type="number" id="amount" name="amount" placeholder="请输入充值金额" step="0.01" required>

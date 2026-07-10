@@ -192,6 +192,19 @@ def _add_security_headers(response):
     return response
 
 # ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+
+def _require_login():
+    """若未登录返回 None；已登录返回 USERS 字典中的用户信息。"""
+    username = session.get("username")
+    if not username or username not in USERS:
+        return None
+    return USERS[username]
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -344,10 +357,23 @@ def search():
 
 @app.route("/profile")
 def profile():
-    """个人中心 — 根据 URL 参数 user_id 查询任意用户资料（无权限校验）。"""
+    """个人中心 — 需登录，仅可查看本人资料或 admin 可查看他人。"""
+    current_user = _require_login()
+    if not current_user:
+        return redirect(url_for("login"))
+
     user_id = request.args.get("user_id", "").strip()
     user = None
     error = None
+
+    # IDOR 修复：非本人且非 admin 拒绝访问
+    if user_id and str(session.get("user_id")) != user_id and current_user["role"] != "admin":
+        return render_template(
+            "profile.html",
+            username=session.get("username"),
+            user=user,
+            error="无权查看其他用户的资料。",
+        ), 403
 
     if not user_id:
         error = "缺少用户 ID 参数。"
@@ -377,9 +403,37 @@ def profile():
 
 @app.route("/recharge", methods=["POST"])
 def recharge():
-    """充值 — 直接修改余额，不做金额正负校验，不做权限检查。"""
-    user_id = request.form.get("user_id", "")
-    amount = float(request.form.get("amount", "0"))
+    """充值 — 需登录，CSRF 保护，服务端校验金额，user_id 从 session 获取。"""
+    current_user = _require_login()
+    if not current_user:
+        return redirect(url_for("login"))
+
+    # CSRF 校验
+    csrf_token = request.form.get("_csrf_token", "")
+    if not _validate_csrf(csrf_token):
+        logging.warning(
+            "CSRF token missing or invalid on recharge from %s", request.remote_addr
+        )
+        flash("请求无效，请刷新页面后重试。")
+        return redirect(url_for("index"))
+
+    # user_id 从 session 获取，不信任表单字段；admin 可为他人充值
+    user_id = str(session.get("user_id"))
+    if current_user["role"] == "admin" and request.form.get("user_id"):
+        user_id = request.form.get("user_id", "").strip()
+
+    # 服务端校验金额
+    try:
+        amount = float(request.form.get("amount", "0"))
+    except (ValueError, TypeError):
+        flash("无效的金额。")
+        return redirect(f"/profile?user_id={user_id}")
+    if amount <= 0:
+        flash("充值金额必须大于 0。")
+        return redirect(f"/profile?user_id={user_id}")
+    if amount > 10000:
+        flash("单次充值金额不能超过 10000。")
+        return redirect(f"/profile?user_id={user_id}")
 
     conn = sqlite3.connect("data/users.db")
     cursor = conn.cursor()
@@ -397,6 +451,29 @@ def recharge():
     )
     flash(f"充值成功！金额：{amount}")
     return redirect(f"/profile?user_id={user_id}")
+
+
+@app.route("/admin")
+def admin_panel():
+    """管理面板 — 仅 admin 角色可访问，列出所有用户。"""
+    current_user = _require_login()
+    if not current_user:
+        return redirect(url_for("login"))
+    if current_user["role"] != "admin":
+        return render_template("admin.html", error="无权访问管理面板。"), 403
+
+    conn = sqlite3.connect("data/users.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, phone, balance FROM users")
+    users = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return render_template(
+        "admin.html",
+        username=session.get("username"),
+        users=users,
+    )
 
 
 @app.route("/logout", methods=["POST"])
