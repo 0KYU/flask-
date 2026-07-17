@@ -193,6 +193,30 @@
 
 > 📄 详细内容见 [DAY9-命令注入漏洞测试与修复报告.md](DAY9-命令注入漏洞测试与修复报告.md)
 
+### DAY10 — XML 数据导入功能 + XXE 攻防
+
+在已有功能基础上，新增了 **XML 数据导入**功能。新功能为教学目的通过自定义正则提取 + 本地文件读取的方式模拟了 XML 外部实体（XXE）处理流程，引入了任意文件读取漏洞，随后进行了专项 XXE 漏洞检测与修复。
+
+#### 新增功能
+
+- **XML 数据导入** (`/xml-import`) — 登录用户可提交包含用户数据的 XML 文件，系统解析 `<user>` 节点并返回解析结果
+
+#### XXE 漏洞检测
+
+对 `/xml-import` 接口进行了 XXE、信息泄露和实体展开专项测试，发现 **3 个安全漏洞**：
+
+| 漏洞 | CWE | CVSS 3.1 | 成因 | 攻击方式 | 危害 |
+|------|-----|---------|------|----------|------|
+| XXE-1 | CWE-611 | 6.5 MEDIUM | 自定义 regex + `open()` 手动处理 SYSTEM 实体 | `<!ENTITY xxe SYSTEM "C:/Windows/win.ini">` + `&xxe;` | 读取服务器任意文件（系统配置、源码、数据库） |
+| XXE-2 | CWE-209 | 4.3 MEDIUM | 文件读取失败时错误消息包含完整路径 | 探测不存在的文件路径 | 泄露操作系统类型和目录结构 |
+| XXE-3 | CWE-776 | 5.3 MEDIUM | 无实体数量和文件大小限制 | 大量实体定义或超大文件读取 | 服务器资源耗尽（OOM/DoS） |
+
+#### XXE 修复
+
+实施四层纵深防御：认证守卫 → CSRF Token 校验 → `defusedxml` 安全解析（自动禁用外部实体/DTD/实体展开） → 通用化异常处理（不泄露路径信息）。
+
+> 📄 详细内容见 [DAY10-XXE漏洞测试与修复报告.md](DAY10-XXE漏洞测试与修复报告.md)
+
 ---
 
 ## ✨ 当前功能特性
@@ -209,6 +233,7 @@
 - **密码修改** — 登录后修改密码，CSRF 保护，确认密码校验
 - **URL 抓取** — 登录后抓取外部 URL，6 层 SSRF 防护（协议+IP+DNS）
 - **Ping 网络诊断** — 登录后执行 ping 连通性测试，终端风格显示，4 层命令注入防护
+- **XML 数据导入** — 登录后提交 XML 文件导入用户数据，defusedxml 安全解析防 XXE
 - **用户仪表盘** — 登录后展示个人信息（已脱敏处理）
 - **安全退出** — POST + CSRF Token 双重验证
 - **速率限制** — 5 次 / 5 分钟，防暴力破解
@@ -226,6 +251,7 @@
 | **文件上传安全** | `secure_filename()` 防路径穿越 + 后缀白名单 + UUID 唯一文件名 |
 | **SSRF 防护** | 六层防御：URL 解析 + 协议白名单 + 主机名黑名单 + DNS 解析 + IP 过滤 (loopback/private/link-local) |
 | **命令注入防护** | 四层防御：认证守卫 + CSRF Token + 输入白名单+元字符黑名单 + `shell=False` 参数列表执行 |
+| **XXE 防护** | 四层防御：认证守卫 + CSRF Token + defusedxml 安全解析（禁用外部实体/DTD/实体展开） + 通用化异常处理 |
 | **路径遍历防护** | 页面白名单 + `secure_filename()` + `realpath()` 目录 confinement 三层防御 |
 | **访问控制** | IDOR 防护（session user_id 验证）+ RBAC 角色校验（admin/user）+ 认证守卫 |
 | **输入校验** | 用户名白名单 `[a-zA-Z0-9_-]` + 金额范围校验 + 类型校验 |
@@ -298,6 +324,7 @@ flask-u0k/
 ├── DAY7-CSRF漏洞测试与修复报告.md                 # DAY7 CSRF漏洞攻防报告
 ├── DAY8-SSRF漏洞测试与修复报告.md                 # DAY8 SSRF漏洞攻防报告
 ├── DAY9-命令注入漏洞测试与修复报告.md                # DAY9 命令注入攻防报告
+├── DAY10-XXE漏洞测试与修复报告.md                     # DAY10 XXE漏洞攻防报告
 ├── pages/
 │   └── help.html                              # 帮助中心页面
 ├── data/
@@ -310,6 +337,7 @@ flask-u0k/
 │   ├── profile.html                          # 个人中心 (含充值、修改密码表单)
 │   ├── admin.html                            # 管理面板 (admin 专属)
 │   ├── ping.html                             # Ping 网络诊断 (含 CSRF Token)
+│   ├── xml_import.html                       # XML 数据导入 (含 CSRF Token)
 │   └── index.html                            # 仪表盘 + 搜索 + URL抓取 (已脱敏)
 └── static/
     ├── css/
@@ -324,7 +352,8 @@ flask-u0k/
 - **数据库**: SQLite3 (Python 标准库)
 - **会话管理**: Flask Session (服务端签名 Cookie)
 - **文件上传**: Werkzeug `secure_filename()` + UUID 唯一命名
-- **Python 标准库**: `sqlite3`、`secrets`、`logging`、`datetime`、`collections`、`uuid`
+- **Python 标准库**: `sqlite3`、`secrets`、`logging`、`datetime`、`collections`、`uuid`、`xml.etree.ElementTree`
+- **安全库**: `defusedxml 0.7+`（XML 安全解析，防 XXE 攻击）
 
 无第三方安全依赖，全部基于 Flask 内置功能和 Python 标准库实现。
 

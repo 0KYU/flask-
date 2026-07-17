@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">XML 数据导入</h2>
+    <p style="color: #666; margin-bottom: 16px;">输入包含用户数据的XML文档进行导入，支持 &lt;!ENTITY&gt; 外部实体引用。</p>
+
+    <form method="POST" action="/xml-import" class="login-form">
+        <div class="form-group">
+            <label for="xml_data">XML 数据</label>
+            <textarea id="xml_data" name="xml_data" rows="12" placeholder="请输入XML数据..." style="width: 100%; padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; font-family: 'Consolas', 'Courier New', monospace; outline: none; resize: vertical; color: #333; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'; this.style.boxShadow='0 0 0 2px rgba(102, 126, 234, 0.15)';" onblur="this.style.borderColor='#d9d9d9'; this.style.boxShadow='none';">{{ xml_data or '' }}</textarea>
+        </div>
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary btn-block">导入</button>
+    </form>
+
+    {% if result %}
+    <div style="margin-top: 24px;">
+        <p style="margin-bottom: 8px; color: #666;">导入结果</p>
+        <pre style="background: #1e1e1e; color: #00ff00; border: 1px solid #333; border-radius: 6px; padding: 16px; font-size: 14px; font-family: 'Consolas', 'Courier New', monospace; max-height: 500px; overflow: auto; white-space: pre-wrap; word-break: break-all; line-height: 1.6;">{{ result }}</pre>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div style="margin-top: 24px;">
+        <p style="margin-bottom: 8px; color: #666;">错误信息</p>
+        <pre style="background: #1e1e1e; color: #ff4444; border: 1px solid #333; border-radius: 6px; padding: 16px; font-size: 14px; font-family: 'Consolas', 'Courier New', monospace; max-height: 500px; overflow: auto; white-space: pre-wrap; word-break: break-all; line-height: 1.6;">{{ error }}</pre>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

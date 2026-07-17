@@ -11,6 +11,7 @@ import urllib.parse
 import ipaddress
 import socket
 import re
+import json
 import subprocess
 import platform
 from datetime import timedelta
@@ -878,6 +879,88 @@ def page():
         page_content=page_content,
         page_error=page_error,
     )
+
+
+@app.route("/xml-import", methods=["GET", "POST"])
+def xml_import():
+    """XML导入 — 需登录。GET 显示页面，POST 处理XML数据导入。"""
+    current_user = _require_login()
+    if not current_user:
+        return redirect(url_for("login"))
+
+    if request.method == "GET":
+        return render_template("xml_import.html", username=session.get("username"))
+
+    # CSRF 保护
+    if not _validate_csrf(request.form.get("_csrf_token", "")):
+        flash("请求无效，请刷新页面后重试。")
+        return redirect(url_for("xml_import"))
+
+    # POST: 处理 XML 数据
+    xml_data = request.form.get("xml_data", "").strip()
+    if not xml_data:
+        return render_template(
+            "xml_import.html",
+            username=session.get("username"),
+            error="请输入XML数据。",
+        )
+
+    # 使用 defusedxml 安全解析 XML
+    # defusedxml 自动禁用外部实体、DTD 和实体展开，防止 XXE 攻击
+    import defusedxml.ElementTree as SafeET
+
+    try:
+        root = SafeET.fromstring(xml_data)
+
+        # 提取 user 节点 (name, email)
+        users = []
+        for user_elem in root.findall(".//user"):
+            name_elem = user_elem.find("name")
+            email_elem = user_elem.find("email")
+            user = {
+                "name": name_elem.text if name_elem is not None else None,
+                "email": email_elem.text if email_elem is not None else None,
+            }
+            users.append(user)
+
+        if not users:
+            return render_template(
+                "xml_import.html",
+                username=session.get("username"),
+                xml_data=xml_data,
+                error="未在XML中找到user节点。",
+            )
+
+        result = {"users": users}
+        result_json = json.dumps(result, ensure_ascii=False, indent=2)
+        return render_template(
+            "xml_import.html",
+            username=session.get("username"),
+            xml_data=xml_data,
+            result=result_json,
+        )
+
+    except (SafeET.ParseError, Exception) as e:
+        # 识别 defusedxml 拦截的外部实体攻击
+        exc_name = type(e).__name__
+        if exc_name == "EntitiesForbidden":
+            error_msg = f"XML包含禁止的外部实体引用，XXE 攻击已被拦截。"
+        elif "Forbidden" in exc_name or exc_name == "DTDForbidden":
+            error_msg = f"XML安全解析失败: {str(e)}"
+        elif exc_name == "ParseError":
+            error_msg = f"XML解析错误: {str(e)}"
+        else:
+            error_msg = f"处理失败: {str(e)}"
+
+        error_json = json.dumps(
+            {"error": error_msg}, ensure_ascii=False, indent=2
+        )
+        return render_template(
+            "xml_import.html",
+            username=session.get("username"),
+            xml_data=xml_data,
+            error=error_json,
+        )
 
 
 # ---------------------------------------------------------------------------
